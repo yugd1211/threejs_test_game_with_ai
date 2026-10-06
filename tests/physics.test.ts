@@ -36,7 +36,7 @@ describe('game physics and progression', () => {
   it('allows a late jump just after leaving a ledge', () => {
     const g = new GameState(levels[0]);
     g.start();
-    g.player.x = 2.95;
+    g.player.x = 3.1;
     advance(g, 0.03, { x: 1, z: 0, jump: false });
     expect(g.player.grounded).toBe(false);
     g.step(1 / 120, { x: 0, z: 0, jump: true });
@@ -67,16 +67,16 @@ describe('game physics and progression', () => {
     expect(g.collected.has(3)).toBe(true);
   });
   it('carries the player with a moving island', () => {
-    const g = new GameState(levels[1]);
+    const g = new GameState(levels[0]);
     g.start();
-    const p = g.level.platforms[4];
-    Object.assign(g.player, { x: p.x, z: p.z, y: p.y, vy: 0, grounded: true, platform: 4 });
+    const p = g.level.platforms[7];
+    Object.assign(g.player, { x: p.x, z: p.z, y: p.y, vy: 0, grounded: true, platform: 7 });
     advance(g, 0.2);
     expect(g.player.x).toBeCloseTo(platformX(p, g.worldTime), 5);
     expect(g.player.grounded).toBe(true);
   });
   it('respawns on contact with the spinner and allows jumping over it', () => {
-    const g = new GameState(levels[2]);
+    const g = new GameState(levels[0]);
     g.start();
     const p = g.level.platforms[4];
     Object.assign(g.player, { x: p.x, z: p.z, y: p.y, vy: 0, grounded: true, platform: 4 });

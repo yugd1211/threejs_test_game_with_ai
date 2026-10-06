@@ -1,4 +1,5 @@
-import { type Level, platformX } from './levels';
+import { type Level, platformX, platformY } from './levels';
+import { moveAndCollide } from './collision';
 export type Phase = 'ready' | 'running' | 'paused' | 'complete';
 export interface Input {
   x: number;
@@ -35,7 +36,14 @@ export class GameState {
   }
   reset() {
     const p = this.level.platforms[0];
-    this.player = { x: p.x, y: p.y, z: p.z, vy: 0, grounded: true, platform: 0 };
+    this.player = {
+      x: platformX(p, 0),
+      y: platformY(p, 0),
+      z: p.z,
+      vy: 0,
+      grounded: true,
+      platform: 0,
+    };
     this.phase = 'ready';
     this.elapsed = 0;
     this.worldTime = 0;
@@ -57,7 +65,7 @@ export class GameState {
     const p = this.level.platforms[this.checkpoint];
     Object.assign(this.player, {
       x: platformX(p, this.worldTime),
-      y: p.y,
+      y: platformY(p, this.worldTime),
       z: p.z,
       vy: 0,
       grounded: true,
@@ -77,9 +85,12 @@ export class GameState {
     this.elapsed += dt;
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     const p = this.player;
+    let carryX = 0,
+      carryY = 0;
     if (p.grounded && p.platform >= 0) {
       const support = this.level.platforms[p.platform];
-      p.x += platformX(support, this.worldTime) - platformX(support, previousTime);
+      carryX = platformX(support, this.worldTime) - platformX(support, previousTime);
+      carryY = platformY(support, this.worldTime) - platformY(support, previousTime);
     }
     if (input.jump && !this.lastJump) this.buffer = 0.14;
     this.lastJump = input.jump;
@@ -94,33 +105,30 @@ export class GameState {
       this.events.push('jump');
     }
     const length = Math.max(1, Math.hypot(input.x, input.z));
-    p.x += (input.x / length) * SPEED * dt;
-    p.z += (input.z / length) * SPEED * dt;
-    const oldY = p.y;
     p.vy -= GRAVITY * dt;
-    p.y += p.vy * dt;
-    p.grounded = false;
-    p.platform = -1;
-    for (let i = 0; i < this.level.platforms.length; i++) {
-      const island = this.level.platforms[i];
-      const x = platformX(island, this.worldTime);
-      if (
-        Math.abs(p.x - x) < island.w / 2 + 0.14 &&
-        Math.abs(p.z - island.z) < island.d / 2 + 0.14 &&
-        p.vy <= 0 &&
-        oldY >= island.y - 0.025 &&
-        p.y <= island.y
-      ) {
-        p.y = island.y;
-        p.vy = 0;
-        p.grounded = true;
-        p.platform = i;
-        this.farthest = Math.max(this.farthest, i);
-        if (island.checkpoint && i > this.checkpoint) {
-          this.checkpoint = i;
-          this.events.push('checkpoint');
-        }
-        break;
+    const moved = moveAndCollide(
+      p,
+      {
+        x: carryX + (input.x / length) * SPEED * dt,
+        y: carryY + p.vy * dt,
+        z: (input.z / length) * SPEED * dt,
+      },
+      this.level.platforms,
+      previousTime,
+      this.worldTime,
+    );
+    p.x = moved.x;
+    p.y = moved.y;
+    p.z = moved.z;
+    p.platform = moved.support;
+    p.grounded = moved.support >= 0;
+    if (p.grounded || moved.headHit) p.vy = 0;
+    if (p.grounded) {
+      const i = p.platform;
+      this.farthest = Math.max(this.farthest, i);
+      if (this.level.platforms[i].checkpoint && i > this.checkpoint) {
+        this.checkpoint = i;
+        this.events.push('checkpoint');
       }
     }
     for (let i = 1; i < this.level.platforms.length - 1; i++) {
@@ -128,8 +136,8 @@ export class GameState {
       if (
         !this.collected.has(i) &&
         Math.hypot(p.x - platformX(island, this.worldTime), p.z - island.z) < 1.05 &&
-        p.y >= island.y - 0.1 &&
-        p.y < island.y + 2.2
+        p.y >= platformY(island, this.worldTime) - 0.1 &&
+        p.y < platformY(island, this.worldTime) + 2.2
       ) {
         this.collected.add(i);
         this.events.push('crystal');
@@ -138,7 +146,7 @@ export class GameState {
     if (p.grounded && this.level.platforms[p.platform]?.hazard && this.invulnerable <= 0) {
       const island = this.level.platforms[p.platform];
       const angle = this.worldTime * 1.8;
-      const dx = p.x - island.x,
+      const dx = p.x - platformX(island, this.worldTime),
         dz = p.z - island.z;
       const along = dx * Math.cos(angle) + dz * Math.sin(angle);
       const across = -dx * Math.sin(angle) + dz * Math.cos(angle);
@@ -147,7 +155,10 @@ export class GameState {
         return;
       }
     }
-    if (p.y < -7) {
+    if (
+      p.y <
+      Math.min(...this.level.platforms.map((island) => island.y - (island.motion?.y ?? 0))) - 7
+    ) {
       this.respawn();
       return;
     }

@@ -1622,3 +1622,17 @@ dialog h2 {
     animation: none !important;
   }
 }
+
+.live-label #altitude {
+  width: auto;
+  height: auto;
+  background: none;
+  border-radius: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.world-card-description {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { type Level, platformX } from './levels';
+import { type Level, platformX, platformY, PLATFORM_THICKNESS } from './levels';
 import { type GameState } from './physics';
 
 const mat = (color: THREE.ColorRepresentation, extra: THREE.MeshStandardMaterialParameters = {}) =>
@@ -22,6 +22,8 @@ export class World {
   private disposed = false;
   private resizeObserver: ResizeObserver;
   private frameTime = 0;
+  private courseBounds = new THREE.Box3();
+  private sun?: THREE.DirectionalLight;
   private level: Level;
   private particles: THREE.Points;
   constructor(
@@ -44,7 +46,7 @@ export class World {
     this.renderer.domElement.setAttribute('role', 'img');
     container.prepend(this.renderer.domElement);
     this.scene.add(new THREE.HemisphereLight(0xf6ffff, 0x889ca0, 1.9));
-    const sun = new THREE.DirectionalLight(0xfff5dc, 2.7);
+    const sun = (this.sun = new THREE.DirectionalLight(0xfff5dc, 2.7));
     sun.position.set(-12, 28, 12);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -180,30 +182,50 @@ export class World {
     this.hazards = [];
     this.clouds = [];
     this.scene.background = new THREE.Color(level.sky);
-    this.scene.fog = new THREE.Fog(level.sky, 55, 110);
+    this.scene.fog = new THREE.Fog(level.sky, 95, 210);
+    this.courseBounds.makeEmpty();
+    level.platforms.forEach((p) => {
+      const dx = (p.motion?.x ?? (p.moving ? 1.2 : 0)) + p.w / 2;
+      const dy = p.motion?.y ?? 0;
+      this.courseBounds.expandByPoint(
+        new THREE.Vector3(p.x - dx, p.y - dy - PLATFORM_THICKNESS, p.z - p.d / 2),
+      );
+      this.courseBounds.expandByPoint(new THREE.Vector3(p.x + dx, p.y + dy + 3, p.z + p.d / 2));
+    });
+    const center = this.courseBounds.getCenter(new THREE.Vector3());
+    if (this.sun) {
+      this.sun.target.position.copy(center);
+      this.sun.position.copy(center).add(new THREE.Vector3(-12, 40, 18));
+      const extent = this.courseBounds.getSize(new THREE.Vector3()).length() / 2 + 6;
+      Object.assign(this.sun.shadow.camera, {
+        left: -extent,
+        right: extent,
+        top: extent,
+        bottom: -extent,
+        far: 150,
+      });
+      this.sun.shadow.camera.updateProjectionMatrix();
+    }
     level.platforms.forEach((p, i) => {
       const group = new THREE.Group();
-      group.position.set(p.x, p.y, p.z);
+      group.position.set(platformX(p, 0), platformY(p, 0), p.z);
       const grass = mat(level.grass),
         cream = mat(0xf4edd9);
       const top = this.box(p.w, 0.32, p.d, grass, 0.13);
       top.position.y = -0.16;
       group.add(top);
-      const soil = this.box(p.w - 0.16, 0.65, p.d - 0.16, cream, 0.14);
-      soil.position.y = -0.61;
+      const soil = this.box(p.w, 0.7, p.d, cream, 0.045);
+      soil.position.y = -0.67;
       group.add(soil);
-      const stone = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.48, 1.4, 4), mat(0xd9d9c8));
-      stone.rotation.y = Math.PI / 4;
-      stone.scale.set((p.w - 0.25) / Math.sqrt(2), 1, (p.d - 0.25) / Math.sqrt(2));
-      stone.position.y = -1.58;
-      stone.castShadow = true;
+      const stone = this.box(p.w, PLATFORM_THICKNESS - 1.02, p.d, mat(0xc3cfbc), 0.035);
+      stone.position.y = -(1.02 + PLATFORM_THICKNESS) / 2;
       group.add(stone);
       for (let j = 0; j < 3; j++) {
         const fleck = this.box(0.23, 0.12, 0.19, mat(0xf0e7ce), 0.015);
         fleck.position.set((j - 1) * p.w * 0.27, -0.51, p.d / 2 - 0.05);
         group.add(fleck);
       }
-      if (i === 0 || i === 3 || i === 6 || i === 8) {
+      if (i === 0 || p.checkpoint || i === level.platforms.length - 1) {
         this.tree(
           group,
           -p.w * 0.33,
@@ -211,7 +233,8 @@ export class World {
           i === 0 ? 1.8 : 1.35,
           level.id === 'moonlight-run' ? 0x9b99bc : 0x7ca984,
         );
-        if (i === 0 || i === 8) this.tree(group, p.w * 0.33, -p.d * 0.26, 1.25, level.grass);
+        if (i === 0 || i === level.platforms.length - 1)
+          this.tree(group, p.w * 0.33, -p.d * 0.26, 1.25, level.grass);
       }
       for (let j = 0; j < 3; j++) {
         const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.25, 4), mat(0x719f79));
@@ -260,16 +283,34 @@ export class World {
         circle.position.y = 0.025;
         group.add(circle);
       }
-      if (p.moving) {
+      if (p.moving || p.motion) {
         const band = this.box(
           p.w + 0.015,
           0.07,
           p.d + 0.015,
-          mat(0xffd27b, { emissive: 0xffbb55, emissiveIntensity: 0.15 }),
+          mat(p.motion?.y ? 0x65e4dc : 0xffd27b, {
+            emissive: p.motion?.y ? 0x209fbd : 0xffbb55,
+            emissiveIntensity: 0.25,
+          }),
           0.04,
         );
         band.position.y = -0.18;
         group.add(band);
+      }
+      if (p.motion?.y) {
+        const travel = p.motion.y;
+        const guide = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.018, 0.018, travel * 2, 6),
+          mat(0x44a6b5, { transparent: true, opacity: 0.55 }),
+        );
+        guide.position.set(p.x + p.w / 2 + 0.25, p.y, p.z);
+        this.root.add(guide);
+        for (const sign of [-1, 1]) {
+          const marker = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.025, 5, 12), mat(0x3ba7b5));
+          marker.rotation.x = Math.PI / 2;
+          marker.position.set(guide.position.x, p.y + travel * sign, p.z);
+          this.root.add(marker);
+        }
       }
       if (p.hazard) {
         const spin = new THREE.Group();
@@ -373,6 +414,7 @@ export class World {
     this.avatar.visible = state.invulnerable > 0 ? Math.sin(t * 35) > -0.5 : true;
     this.islands.forEach((group, i) => {
       group.position.x = platformX(this.level.platforms[i], state.worldTime);
+      group.position.y = platformY(this.level.platforms[i], state.worldTime);
       const crystal = this.crystals[i];
       if (crystal) {
         crystal.visible = !state.collected.has(i);
@@ -391,19 +433,35 @@ export class World {
     }
     const island = state.level.platforms[p.platform >= 0 ? p.platform : state.farthest];
     this.shadow.visible =
-      p.y >= island.y &&
+      p.y >= platformY(island, state.worldTime) &&
       Math.abs(p.z - island.z) < island.d / 2 &&
       Math.abs(p.x - platformX(island, state.worldTime)) < island.w / 2;
-    this.shadow.position.set(p.x, island.y + 0.028, p.z);
-    this.shadow.scale.setScalar(1 + Math.max(0, p.y - island.y) * 0.15);
+    this.shadow.position.set(p.x, platformY(island, state.worldTime) + 0.028, p.z);
+    this.shadow.scale.setScalar(1 + Math.max(0, p.y - platformY(island, state.worldTime)) * 0.15);
     let cameraPosition: THREE.Vector3, look: THREE.Vector3;
     if (state.phase === 'ready') {
-      const narrow = this.camera.aspect < 0.85;
-      cameraPosition = new THREE.Vector3(narrow ? 24 : 19, narrow ? 31 : 23, narrow ? 32 : 22);
-      look = new THREE.Vector3(0, 0, -14);
+      look = this.courseBounds.getCenter(new THREE.Vector3());
+      const back = new THREE.Vector3(0.4, 0.55, 0.73).normalize();
+      const right = new THREE.Vector3(back.z, 0, -back.x).normalize();
+      const up = new THREE.Vector3().crossVectors(back, right);
+      const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const tanH = tanV * this.camera.aspect;
+      let distance = 0;
+      for (const x of [this.courseBounds.min.x, this.courseBounds.max.x])
+        for (const y of [this.courseBounds.min.y, this.courseBounds.max.y])
+          for (const z of [this.courseBounds.min.z, this.courseBounds.max.z]) {
+            const relative = new THREE.Vector3(x, y, z).sub(look);
+            distance = Math.max(
+              distance,
+              relative.dot(back) +
+                Math.max(Math.abs(relative.dot(right)) / tanH, Math.abs(relative.dot(up)) / tanV) *
+                  1.2,
+            );
+          }
+      cameraPosition = look.clone().addScaledVector(back, distance);
     } else {
-      cameraPosition = new THREE.Vector3(p.x + 3.5, Math.max(p.y, 0) + 9.4, p.z + 12);
-      look = new THREE.Vector3(p.x, Math.max(p.y, 0) + 0.2, p.z - 3);
+      cameraPosition = new THREE.Vector3(p.x + 3.5, p.y + 9.4, p.z + 12);
+      look = new THREE.Vector3(p.x, p.y + 0.2, p.z - 3);
     }
     const blend = this.reducedMotion ? 1 : 1 - Math.exp(-dt * 5);
     this.camera.position.lerp(cameraPosition, blend);

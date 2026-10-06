@@ -7,6 +7,9 @@ test('desktop: WebGL, instructions, movement, pause, fall, restart, settings and
   await page.goto('/?qa=1');
   await expect(page.locator('canvas')).toBeVisible();
   await expect(page.locator('#error-overlay')).toBeHidden();
+  await expect(page.locator('[data-level]')).toHaveCount(10);
+  await expect(page.locator('#world-title')).toHaveText('Moonlight Run');
+  await expect(page.locator('#level-difficulty')).toContainText('EASY');
   await page.screenshot({ path: 'test-results/desktop-ready.png', fullPage: true });
   await page.getByRole('button', { name: '플레이 방법', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -44,10 +47,10 @@ test('desktop: WebGL, instructions, movement, pause, fall, restart, settings and
   );
   await page.locator('[data-level="1"]').click();
   await page.getByRole('button', { name: '코스 변경하기' }).click();
-  await expect(page.locator('#world-title')).toHaveText('Sunset Circuit');
+  await expect(page.locator('#world-title')).toHaveText('Terrace Ascent');
   await expect.poll(() => page.evaluate(() => (window as any).__skyhop.phase)).toBe('ready');
   await page.locator('[data-level="2"]').click();
-  await expect(page.locator('#world-title')).toHaveText('Moonlight Run');
+  await expect(page.locator('#world-title')).toHaveText('Canyon Descent');
   await page.getByRole('button', { name: '나의 기록' }).click();
   await expect(page.getByRole('heading', { name: '나의 모험 기록' })).toBeVisible();
   expect(errors).toEqual([]);

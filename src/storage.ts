@@ -1,24 +1,27 @@
+import { levels, crystalTotal } from './levels';
 export interface RecordEntry {
   time: number;
   crystals: number;
   falls: number;
 }
 export type Records = Record<string, RecordEntry>;
-const KEY = 'skyhop-records-v1';
+const KEY = 'skyhop-records-v2';
 export function loadRecords(): Records {
   try {
     const data = JSON.parse(localStorage.getItem(KEY) || '{}');
     if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
     return Object.fromEntries(
-      Object.entries(data).filter(([, v]) => {
+      Object.entries(data).filter(([id, v]) => {
         const r = v as RecordEntry;
+        const level = levels.find((level) => level.id === id);
         return (
           r &&
+          level &&
           Number.isFinite(r.time) &&
           r.time > 0 &&
           Number.isInteger(r.crystals) &&
           r.crystals >= 0 &&
-          r.crystals <= 7 &&
+          r.crystals <= crystalTotal(level) &&
           Number.isInteger(r.falls) &&
           r.falls >= 0
         );

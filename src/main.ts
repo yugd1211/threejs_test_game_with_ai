@@ -31,7 +31,7 @@ import {
   ArrowDown,
   ArrowLeft,
 } from 'lucide';
-import { levels } from './levels';
+import { levels, crystalTotal, checkpointTotal } from './levels';
 import { GameState, formatTime } from './physics';
 import { World } from './scene';
 import { loadRecords, saveRecord } from './storage';
@@ -65,7 +65,7 @@ const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
 const refreshIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.8 } });
 const islandArt = (index: number) =>
-  `<svg viewBox="0 0 118 94" aria-hidden="true"><ellipse cx="62" cy="80" rx="34" ry="5" fill="currentColor" opacity=".1"/><path d="m22 46 36-20 37 20-37 20z" fill="${['#a9ce99', '#efb997', '#b9afe3'][index]}"/><path d="m22 46 36 20 37-20v13L58 81 22 59z" fill="#f3ead2"/><path d="m58 66 37-20v13L58 81z" fill="#d7d6c0"/><path d="m36 66 22 13 22-13-22 24z" fill="#b9c8b2"/><path d="M37 37V20" stroke="#867e62" stroke-width="3"/><path d="m25 25 12-22 12 22-12 8z" fill="${['#639780', '#d2937e', '#8f84b8'][index]}"/><path d="M72 45V25" stroke="#fdf6df" stroke-width="2"/><path d="M73 25h13l-4 5 4 5H73" fill="${['#f29873', '#f0e3a7', '#d7ecb0'][index]}"/><path d="m57 34 5 7-5 8-5-8z" fill="#fff1a1"/></svg>`;
+  `<svg viewBox="0 0 118 94" aria-hidden="true"><ellipse cx="62" cy="80" rx="34" ry="5" fill="currentColor" opacity=".1"/><path d="m22 46 36-20 37 20-37 20z" fill="${['#a9ce99', '#efb997', '#b9afe3'][index % 3]}"/><path d="m22 46 36 20 37-20v13L58 81 22 59z" fill="#f3ead2"/><path d="m58 66 37-20v13L58 81z" fill="#d7d6c0"/><path d="m36 66 22 13 22-13-22 24z" fill="#b9c8b2"/><path d="M37 37V20" stroke="#867e62" stroke-width="3"/><path d="m25 25 12-22 12 22-12 8z" fill="${['#639780', '#d2937e', '#8f84b8'][index % 3]}"/><path d="M72 45V25" stroke="#fdf6df" stroke-width="2"/><path d="M73 25h13l-4 5 4 5H73" fill="${['#f29873', '#f0e3a7', '#d7ecb0'][index % 3]}"/><path d="m57 34 5 7-5 8-5-8z" fill="#fff1a1"/></svg>`;
 $('#app').innerHTML = `
   <header class="site-header">
     <a class="brand" href="./" aria-label="SKYHOP 홈"><span class="brand-mark">${icon('layers')}</span><span>skyhop<span class="brand-period">.</span></span><span class="brand-tag">PLAY ABOVE</span></a>
@@ -83,7 +83,7 @@ $('#app').innerHTML = `
         <div class="play-caption"><span class="tiny-dot"></span> 설치 없이, 바로 플레이</div>
         <div class="session-card">
           <div class="session-heading"><span>이번 모험</span><span id="session-state">READY TO HOP</span></div>
-          <div class="session-values"><div><span class="stat-label">${icon('gem')} 크리스털</span><strong><span id="crystal-count">0</span><small> / 7</small></strong></div><div><span class="stat-label">${icon('flag')} 체크포인트</span><strong><span id="checkpoint-count">0</span><small> / 2</small></strong></div></div>
+          <div class="session-values"><div><span class="stat-label">${icon('gem')} 크리스털</span><strong><span id="crystal-count">0</span><small> / <span id="crystal-total">7</span></small></strong></div><div><span class="stat-label">${icon('flag')} 체크포인트</span><strong><span id="checkpoint-count">0</span><small> / <span id="checkpoint-total">2</span></small></strong></div></div>
           <div class="progress-track"><div id="progress-fill"></div></div>
           <div class="session-bottom"><span id="objective">첫 번째 섬으로 점프해 보세요</span><span id="progress-label">0%</span></div>
         </div>
@@ -96,7 +96,7 @@ $('#app').innerHTML = `
           <div class="timer-badge">${icon('sparkles')}<span id="timer">00:00.0</span><button id="pause-button" aria-label="일시정지" title="일시정지 (Esc)" disabled>${icon('pause')}</button></div>
           <div class="scene-intro" id="scene-intro"><span class="scene-intro-line"></span><span>조금 더 높이, 조금 더 멀리.</span><span class="scene-intro-line"></span></div>
           <div id="toast" class="toast" role="status" aria-live="polite"></div>
-          <div class="viewport-bottom"><span class="live-label"><span></span> MADE TO EXPLORE</span><span id="level-difficulty" class="difficulty">${icon('layers')} EASY</span></div>
+          <div class="viewport-bottom"><span class="live-label"><span></span> <span id="altitude">ALT +0.0 m</span></span><span id="level-difficulty" class="difficulty">${icon('layers')} EASY</span></div>
           <div class="screen-overlay" id="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title" hidden><div class="overlay-card"><span class="overlay-icon">${icon('pause')}</span><span class="small-caps">TAKE A LITTLE BREATH</span><h2 id="pause-title">잠깐, 쉬어가요.</h2><p>구름은 도망가지 않아요.<br>준비되면 이어서 모험해요.</p><button id="resume-button" class="button primary">계속 플레이 ${icon('play')}</button><button id="restart-button" class="button secondary">처음부터 다시 ${icon('rotate-ccw')}</button></div></div>
           <div class="screen-overlay" id="complete-overlay" role="dialog" aria-modal="true" aria-labelledby="complete-title" hidden><div class="overlay-card complete-card"><span class="overlay-icon">${icon('trophy')}</span><span class="small-caps" id="result-eyebrow">ADVENTURE COMPLETE</span><h2 id="complete-title">멋진 착지예요!</h2><p>한 번의 작은 점프가, 멋진 모험이 됐네요.</p><div class="result-stats"><div><span>완주 기록</span><strong id="result-time"></strong></div><div><span>크리스털</span><strong id="result-crystals"></strong></div><div><span>재도전</span><strong id="result-falls"></strong></div></div><p class="save-message" id="save-message"></p><button id="next-button" class="button primary">다음 모험으로 ${icon('arrow-right')}</button><button id="replay-button" class="button secondary">기록에 다시 도전 ${icon('rotate-ccw')}</button></div></div>
           <div class="touch-controls" id="touch-controls"><div class="dpad"><button data-control="forward" class="pad-up" aria-label="앞으로 이동">${icon('arrow-up')}</button><button data-control="left" class="pad-left" aria-label="왼쪽 이동">${icon('arrow-left')}</button><button data-control="back" class="pad-down" aria-label="뒤로 이동">${icon('arrow-down')}</button><button data-control="right" class="pad-right" aria-label="오른쪽 이동">${icon('arrow-right')}</button></div><button data-control="jump" class="jump-pad" aria-label="점프">${icon('arrow-up')}<span>JUMP</span></button></div>
@@ -105,7 +105,7 @@ $('#app').innerHTML = `
         <div class="control-strip"><div class="keyboard-hints"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동</span><span><kbd class="space-key">SPACE</kbd> 점프</span><span><kbd>ESC</kbd> 일시정지</span></div><span class="mobile-hint">방향 버튼으로 이동 · JUMP로 점프</span><button id="help-button">처음 오셨나요? ${icon('circle-help')}</button></div>
       </div>
     </section>
-    <section class="worlds-section" aria-labelledby="worlds-heading"><div class="section-heading"><div><span class="section-kicker">FIND YOUR NEXT HOP</span><h2 id="worlds-heading">어떤 하늘을 만나볼까요?</h2></div><span class="world-count">03 WORLDS <span>·</span> ENDLESS LITTLE MOMENTS</span></div><div class="world-cards">${levels.map((level, index) => `<button class="world-card ${index === 0 ? 'selected' : ''}" data-level="${index}" aria-pressed="${index === 0}"><span class="world-art art-${index}">${islandArt(index)}</span><span class="world-card-body"><span class="world-card-top">WORLD 0${index + 1}<span class="level-tag tag-${index}">${level.difficulty}</span></span><strong>${level.title}</strong><span class="world-card-description">${level.subtitle} <span>· ${level.duration}</span></span></span><span class="world-card-arrow">${icon(index === 0 ? 'check' : 'arrow-up-right')}</span></button>`).join('')}</div></section>
+    <section class="worlds-section" aria-labelledby="worlds-heading"><div class="section-heading"><div><span class="section-kicker">FIND YOUR NEXT HOP</span><h2 id="worlds-heading">어떤 하늘을 만나볼까요?</h2></div><span class="world-count">${String(levels.length).padStart(2, '0')} WORLDS <span>·</span> ENDLESS LITTLE MOMENTS</span></div><div class="world-cards">${levels.map((level, index) => `<button class="world-card ${index === 0 ? 'selected' : ''}" data-level="${index}" aria-pressed="${index === 0}"><span class="world-art art-${index % 3}">${islandArt(index)}</span><span class="world-card-body"><span class="world-card-top">WORLD ${String(index + 1).padStart(2, '0')}<span class="level-tag tag-${index % 3}">${level.difficulty}</span></span><strong>${level.title}</strong><span class="world-card-description">${level.subtitle} <span>· ${level.duration}</span></span></span><span class="world-card-arrow">${icon(index === 0 ? 'check' : 'arrow-up-right')}</span></button>`).join('')}</div></section>
     <footer><span>작은 점프에도, 당신만의 모험이 있어요.</span><span>BUILT WITH THREE.JS <span class="footer-cross">✳</span> PLAY A LITTLE. FEEL A LOT.</span></footer>
   </main>
   <dialog id="info-dialog" aria-labelledby="dialog-title"><button class="dialog-close icon-button" id="dialog-close" aria-label="닫기">${icon('x')}</button><div id="dialog-content"></div></dialog>
@@ -146,6 +146,8 @@ function best() {
   $('#best-time').textContent = r ? formatTime(r.time) : '아직 없어요';
 }
 function syncUI() {
+  $('#crystal-total').textContent = String(crystalTotal(state.level));
+  $('#checkpoint-total').textContent = String(checkpointTotal(state.level));
   const active = state.phase === 'running';
   $('#pause-overlay').hidden = state.phase !== 'paused';
   $('#complete-overlay').hidden = state.phase !== 'complete';
@@ -203,7 +205,7 @@ function chooseLevel(next: number) {
   clearInput();
   state = new GameState(levels[index]);
   world?.setLevel(state.level);
-  $('#world-number').textContent = `0${index + 1}`;
+  $('#world-number').textContent = String(index + 1).padStart(2, '0');
   $('#world-title').textContent = state.level.title;
   $('#level-description').textContent = state.level.description;
   $('#level-difficulty').innerHTML = `${icon('layers')} ${state.level.difficulty}`;
@@ -227,13 +229,15 @@ function finish() {
   });
   $('#result-eyebrow').textContent = result.isBest ? 'A NEW PERSONAL BEST!' : 'ADVENTURE COMPLETE';
   $('#result-time').textContent = formatTime(state.elapsed);
-  $('#result-crystals').textContent = `${state.collected.size} / 7`;
+  $('#result-crystals').textContent = `${state.collected.size} / ${crystalTotal(state.level)}`;
   $('#result-falls').textContent = `${state.falls}회`;
   $('#save-message').textContent = result.saved
     ? '이 브라우저에 최고 기록을 저장했어요.'
     : '브라우저 저장 공간을 사용할 수 없어 기록이 저장되지 않았어요.';
   $('#next-button').innerHTML =
-    index < 2 ? `다음 모험으로 ${icon('arrow-right')}` : `첫 번째 하늘로 ${icon('arrow-right')}`;
+    index < levels.length - 1
+      ? `다음 모험으로 ${icon('arrow-right')}`
+      : `첫 번째 하늘로 ${icon('arrow-right')}`;
   best();
   syncUI();
   $('#next-button').focus();
@@ -241,7 +245,7 @@ function finish() {
 function showHelp() {
   if (state.phase === 'running') pause();
   $('#dialog-content').innerHTML =
-    `<span class="dialog-kicker">A QUICK FIELD GUIDE</span><h2 id="dialog-title">첫 점프는, 가볍게.</h2><p class="dialog-lead">공중섬을 따라 마지막 빛나는 포털에 도착하세요.</p><div class="guide-grid"><div><span class="guide-number">01</span><h3>걷고, 점프하고</h3><p><kbd>W A S D</kbd> 또는 방향키로 이동하고 <kbd>Space</kbd>로 점프하세요. 화면 위쪽이 앞으로예요.</p></div><div><span class="guide-number">02</span><h3>반짝임을 따라가요</h3><p>황금 크리스털 7개를 모아보세요. 모두 모으지 않아도 포털을 통과하면 완주예요.</p></div><div><span class="guide-number">03</span><h3>떨어져도 괜찮아요</h3><p>깃발이 있는 섬은 체크포인트예요. 떨어지면 마지막 깃발로 돌아오고, 수집한 크리스털은 유지돼요.</p></div><div><span class="guide-number">04</span><h3>나만의 페이스로</h3><p><kbd>Esc</kbd> 또는 <kbd>P</kbd>로 잠시 쉬세요. 타이머도 멈춰요. 모바일에서는 화면의 방향 버튼과 JUMP를 사용해요.</p></div></div><div class="guide-tip">${icon('sparkles')} 섬 가장자리에서 점프하면 멀리 갈 수 있어요. 노란 테두리는 움직이는 섬, 붉은 막대는 점프해서 피하는 장애물이에요.</div><button id="guide-done" class="button primary">좋아요, 준비됐어요 ${icon('arrow-right')}</button>`;
+    `<span class="dialog-kicker">A QUICK FIELD GUIDE</span><h2 id="dialog-title">첫 점프는, 가볍게.</h2><p class="dialog-lead">공중섬을 따라 마지막 빛나는 포털에 도착하세요.</p><div class="guide-grid"><div><span class="guide-number">01</span><h3>걷고, 점프하고</h3><p><kbd>W A S D</kbd> 또는 방향키로 이동하고 <kbd>Space</kbd>로 점프하세요. 화면 위쪽이 앞으로예요.</p></div><div><span class="guide-number">02</span><h3>반짝임을 따라가요</h3><p>현재 코스의 황금 크리스털 ${crystalTotal(state.level)}개를 모아보세요. 모두 모으지 않아도 포털을 통과하면 완주예요.</p></div><div><span class="guide-number">03</span><h3>떨어져도 괜찮아요</h3><p>깃발이 있는 섬은 체크포인트예요. 떨어지면 마지막 깃발로 돌아오고, 수집한 크리스털은 유지돼요.</p></div><div><span class="guide-number">04</span><h3>나만의 페이스로</h3><p><kbd>Esc</kbd> 또는 <kbd>P</kbd>로 잠시 쉬세요. 타이머도 멈춰요. 모바일에서는 화면의 방향 버튼과 JUMP를 사용해요.</p></div></div><div class="guide-tip">${icon('sparkles')} 섬 가장자리에서 점프하면 멀리 갈 수 있어요. 노란 테두리는 좌우 이동, 청록 테두리는 승강 발판이에요. 높은 발판은 상승 타이밍을 기다리세요. 옆면과 아랫면은 통과할 수 없어요.</div><button id="guide-done" class="button primary">좋아요, 준비됐어요 ${icon('arrow-right')}</button>`;
   refreshIcons();
   dialog.showModal();
   $('#guide-done').onclick = () => dialog.close();
@@ -253,7 +257,7 @@ function showRecords() {
     `<span class="dialog-kicker">YOUR LITTLE MILESTONES</span><h2 id="dialog-title">나의 모험 기록</h2><p class="dialog-lead">각 하늘에서 가장 빨랐던 순간을 모았어요.</p><div class="records-list">${levels
       .map((level, i) => {
         const record = records[level.id];
-        return `<div class="record-row"><span class="record-index">0${i + 1}</span><div><strong>${level.title}</strong><span>${record ? `크리스털 ${record.crystals}/7 · 재도전 ${record.falls}회` : '첫 모험을 기다리고 있어요'}</span></div><b>${record ? formatTime(record.time) : '—'}</b></div>`;
+        return `<div class="record-row"><span class="record-index">${String(i + 1).padStart(2, '0')}</span><div><strong>${level.title}</strong><span>${record ? `크리스털 ${record.crystals}/${crystalTotal(level)} · 재도전 ${record.falls}회` : '첫 모험을 기다리고 있어요'}</span></div><b>${record ? formatTime(record.time) : '—'}</b></div>`;
       })
       .join(
         '',
@@ -418,8 +422,7 @@ try {
   $('#error-overlay').hidden = false;
   $<HTMLButtonElement>('#play-button').disabled = true;
 }
-best();
-syncUI();
+chooseLevel(0);
 let last = performance.now();
 let accumulator = 0;
 function frame(now: number) {
@@ -434,7 +437,8 @@ function frame(now: number) {
   for (const event of state.events) {
     sound.play(event);
     if (event === 'checkpoint') toast('체크포인트 저장! 이제 여기서 다시 시작해요');
-    if (event === 'crystal' && state.collected.size === 7) toast('크리스털 7개를 모두 모았어요!');
+    if (event === 'crystal' && state.collected.size === crystalTotal(state.level))
+      toast(`크리스털 ${crystalTotal(state.level)}개를 모두 모았어요!`);
     if (event === 'fall') toast('괜찮아요. 다시 한 번, 가볍게!');
     if (event === 'complete') finish();
   }
@@ -444,6 +448,8 @@ function frame(now: number) {
     previousPhase = state.phase;
   }
   $('#timer').textContent = formatTime(state.elapsed);
+  $('#altitude').textContent =
+    `ALT ${state.player.y >= 0 ? '+' : ''}${state.player.y.toFixed(1)} m`;
   $('#crystal-count').textContent = String(state.collected.size);
   $('#checkpoint-count').textContent = String(
     state.level.platforms.slice(0, state.checkpoint + 1).filter((p) => p.checkpoint).length,
@@ -456,9 +462,9 @@ function frame(now: number) {
       ? '구름 위 모험을 완주했어요!'
       : state.farthest === 0
         ? '첫 번째 섬으로 점프해 보세요'
-        : state.farthest >= 7
+        : state.farthest >= state.level.platforms.length - 2
           ? '마지막 포털이 기다리고 있어요'
-          : `다음 섬으로! · ${state.farthest + 1} / 9 구간`;
+          : `다음 섬으로! · ${state.farthest + 1} / ${state.level.platforms.length} 구간`;
   if (now > toastUntil) $('#toast').classList.remove('visible');
   if (world) {
     if (controls.x || controls.z) {
